@@ -1,4 +1,6 @@
 package com.placementsystem.util;
 
-public class Role {
+public enum Role {
+    ADMIN,
+    STUDENT
 }

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Applications — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/student/dashboard.html" class="navbar-brand">💼 Smart Placement</a>
+    <div class="navbar-links">
+        <a href="/student/dashboard.html">Dashboard</a>
+        <a href="/student/jobs.html">Jobs</a>
+        <a href="/student/applications.html" class="active">My Applications</a>
+        <a href="/student/profile.html">Profile</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>My Applications 📄</h1>
+        <p>Track all your job applications and their current status</p>
+    </div>
+
+    <!-- Status summary tabs -->
+    <div class="status-tabs" id="statusTabs">
+        <button class="status-tab active" data-status="">All</button>
+        <button class="status-tab" data-status="APPLIED">Applied</button>
+        <button class="status-tab" data-status="SHORTLISTED">Shortlisted</button>
+        <button class="status-tab" data-status="INTERVIEW_SCHEDULED">Interview</button>
+        <button class="status-tab" data-status="SELECTED">Selected</button>
+        <button class="status-tab" data-status="REJECTED">Rejected</button>
+    </div>
+
+    <!-- Applications list -->
+    <div id="applicationsContainer">
+        <div class="loading"><span class="spinner"></span>Loading applications...</div>
+    </div>
+
+</div>
+
+<!-- ═══════════════ INTERVIEW DETAILS MODAL ═══════════════ -->
+<div class="modal-overlay" id="interviewModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>📅 Interview Details</h2>
+            <button class="modal-close" onclick="closeInterviewModal()">&times;</button>
+        </div>
+        <div id="interviewBody"></div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeInterviewModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/student.js"></script>
+<script>
+    let allApplications = [];
+    let activeFilter = '';
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!guardStudentPage()) return;
+        await loadApplications();
+        setupStatusTabs();
+    });
+
+    async function loadApplications() {
+        const container = document.getElementById('applicationsContainer');
+        container.innerHTML = '<div class="loading"><span class="spinner"></span>Loading applications...</div>';
+
+        try {
+            const res = await api.get('/students/applications');
+            allApplications = res.data || [];
+            renderApplications();
+        } catch (error) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Could not load applications</h3>
+                    <p>${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    function renderApplications() {
+        const container = document.getElementById('applicationsContainer');
+
+        let filtered = allApplications;
+        if (activeFilter) {
+            filtered = allApplications.filter(a => a.status === activeFilter);
+        }
+
+        if (!filtered.length) {
+            const emptyMsg = activeFilter
+                ? `No applications with status "${activeFilter.replace('_', ' ')}"`
+                : 'You haven\'t applied for any jobs yet';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>${escapeHtml(emptyMsg)}</h3>
+                    <p>Browse jobs to start applying</p>
+                    <a href="/student/jobs.html" class="btn btn-primary" style="margin-top:12px;">Browse Jobs</a>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="application-list">
+                ${filtered.map(a => renderApplicationCard(a)).join('')}
+            </div>
+        `;
+    }
+
+    function renderApplicationCard(a) {
+        const statusInfo = getStatusInfo(a.status);
+        const canViewInterview = a.status === 'INTERVIEW_SCHEDULED' || a.status === 'SELECTED';
+
+        return `
+            <div class="application-card">
+                <div class="application-header">
+                    <div>
+                        <div class="application-company">${escapeHtml(a.companyName)}</div>
+                        <div class="application-role">${escapeHtml(a.jobRole)}</div>
+                    </div>
+                    <span class="badge ${statusInfo.color}">${statusInfo.label}</span>
+                </div>
+
+                <div class="application-meta">
+                    <div>
+                        <span class="meta-label">Applied On:</span>
+                        <span>${formatDate(a.appliedDate)}</span>
+                    </div>
+                    <div>
+                        <span class="meta-label">Application ID:</span>
+                        <span>#${a.id}</span>
+                    </div>
+                </div>
+
+                ${renderTimeline(a.status)}
+
+                ${canViewInterview ? `
+                    <div class="application-actions">
+                        <button class="btn btn-primary btn-sm" onclick="viewInterview(${a.id})">
+                            📅 View Interview Details
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    function renderTimeline(status) {
+        const steps = ['APPLIED', 'SHORTLISTED', 'INTERVIEW_SCHEDULED', 'SELECTED'];
+        const currentIndex = steps.indexOf(status);
+        const isRejected = status === 'REJECTED';
+
+        return `
+            <div class="timeline">
+                ${steps.map((step, idx) => {
+            let cls = 'timeline-step';
+            if (isRejected) {
+                if (idx === 0) cls += ' done';
+            } else if (idx <= currentIndex) {
+                cls += ' done';
+            }
+            if (idx === currentIndex && !isRejected) cls += ' current';
+            return `<div class="${cls}">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-label">${step.replace('_', ' ')}</div>
+                    </div>`;
+        }).join('')}
+                ${isRejected ? `
+                    <div class="timeline-step rejected">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-label">REJECTED</div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    function getStatusInfo(status) {
+        const map = {
+            'APPLIED':             { label: 'Applied',             color: 'badge-blue'   },
+            'SHORTLISTED':         { label: 'Shortlisted',         color: 'badge-yellow' },
+            'INTERVIEW_SCHEDULED': { label: 'Interview Scheduled', color: 'badge-purple' },
+            'SELECTED':            { label: 'Selected',            color: 'badge-green'  },
+            'REJECTED':            { label: 'Rejected',            color: 'badge-red'    }
+        };
+        return map[status] || { label: status, color: 'badge-gray' };
+    }
+
+    function setupStatusTabs() {
+        document.querySelectorAll('.status-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                activeFilter = tab.dataset.status;
+                renderApplications();
+            });
+        });
+    }
+
+    async function viewInterview(applicationId) {
+        try {
+            // We'll fetch all interviews for the student and filter
+            const userRes = await api.get('/students/profile');
+            const studentId = userRes.data.id;
+
+            const res = await api.get(`/interviews/student/${studentId}`);
+            const interviews = res.data || [];
+
+            const interview = interviews.find(i => i.applicationId === applicationId);
+
+            if (!interview) {
+                showMessage('No interview scheduled yet', 'warning');
+                return;
+            }
+
+            document.getElementById('interviewBody').innerHTML = `
+                <div class="profile-grid">
+                    <div class="profile-item">
+                        <div class="profile-label">Company</div>
+                        <div class="profile-value">${escapeHtml(interview.companyName)}</div>
+                    </div>
+                    <div class="profile-item">
+                        <div class="profile-label">Role</div>
+                        <div class="profile-value">${escapeHtml(interview.jobRole)}</div>
+                    </div>
+                    <div class="profile-item">
+                        <div class="profile-label">Date</div>
+                        <div class="profile-value">${formatDate(interview.interviewDate)}</div>
+                    </div>
+                    <div class="profile-item">
+                        <div class="profile-label">Time</div>
+                        <div class="profile-value">${interview.interviewTime || 'TBD'}</div>
+                    </div>
+                    <div class="profile-item">
+                        <div class="profile-label">Mode</div>
+                        <div class="profile-value">
+                            <span class="badge badge-purple">${escapeHtml(interview.mode)}</span>
+                        </div>
+                    </div>
+                    ${interview.location ? `
+                        <div class="profile-item">
+                            <div class="profile-label">Location / Link</div>
+                            <div class="profile-value">${escapeHtml(interview.location)}</div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            document.getElementById('interviewModal').classList.add('active');
+
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    }
+
+    function closeInterviewModal() {
+        document.getElementById('interviewModal').classList.remove('active');
+    }
+
+    // Close on overlay click
+    document.getElementById('interviewModal').addEventListener('click', (e) => {
+        if (e.target.id === 'interviewModal') closeInterviewModal();
+    });
+</script>
+
+<!-- Extra styles for application page -->
+<style>
+    .status-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        background: white;
+        padding: 6px;
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .status-tab {
+        padding: 8px 16px;
+        border: none;
+        background: transparent;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+        font-family: inherit;
+        transition: all 0.2s;
+    }
+    .status-tab:hover {
+        background: #f1f5f9;
+        color: #1e293b;
+    }
+    .status-tab.active {
+        background: #2563eb;
+        color: white;
+    }
+
+    .application-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .application-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border-left: 4px solid #2563eb;
+    }
+
+    .application-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .application-company {
+        font-size: 17px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 2px;
+    }
+
+    .application-role {
+        font-size: 14px;
+        color: #64748b;
+    }
+
+    .application-meta {
+        display: flex;
+        gap: 24px;
+        font-size: 13px;
+        color: #64748b;
+        padding: 12px 0;
+        border-top: 1px solid #f1f5f9;
+        border-bottom: 1px solid #f1f5f9;
+        flex-wrap: wrap;
+    }
+
+    .meta-label {
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .timeline {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 16px 0;
+        padding: 12px 0;
+        overflow-x: auto;
+    }
+
+    .timeline-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        min-width: 80px;
+        opacity: 0.4;
+        position: relative;
+    }
+
+    .timeline-step.done {
+        opacity: 1;
+    }
+
+    .timeline-step.rejected {
+        opacity: 1;
+    }
+
+    .timeline-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #cbd5e1;
+        margin-bottom: 6px;
+        position: relative;
+        z-index: 2;
+    }
+
+    .timeline-step.done .timeline-dot {
+        background: #10b981;
+        box-shadow: 0 0 0 4px #d1fae5;
+    }
+
+    .timeline-step.current .timeline-dot {
+        background: #2563eb;
+        box-shadow: 0 0 0 4px #dbeafe;
+    }
+
+    .timeline-step.rejected .timeline-dot {
+        background: #ef4444;
+        box-shadow: 0 0 0 4px #fee2e2;
+    }
+
+    .timeline-step::before {
+        content: '';
+        position: absolute;
+        top: 6px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: #e2e8f0;
+        z-index: 1;
+    }
+
+    .timeline-step:first-child::before {
+        left: 50%;
+    }
+
+    .timeline-step:last-child::before {
+        right: 50%;
+    }
+
+    .timeline-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        text-align: center;
+        letter-spacing: 0.3px;
+    }
+
+    .timeline-step.done .timeline-label,
+    .timeline-step.current .timeline-label {
+        color: #0f172a;
+    }
+
+    .application-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+    }
+</style>
+</body>
+</html>

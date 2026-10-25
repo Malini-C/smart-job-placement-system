@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Interviews — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/admin/dashboard.html" class="navbar-brand">💼 Smart Placement (Admin)</a>
+    <div class="navbar-links">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/companies.html">Companies</a>
+        <a href="/admin/jobs.html">Jobs</a>
+        <a href="/admin/applications.html">Applications</a>
+        <a href="/admin/interviews.html" class="active">Interviews</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Manage Interviews 📅</h1>
+        <p>Schedule and manage interviews for shortlisted students</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" style="margin-bottom:24px;">
+        <div class="stat-card info">
+            <h3>Total Interviews</h3>
+            <div class="value" id="countTotal">–</div>
+        </div>
+        <div class="stat-card warning">
+            <h3>Upcoming</h3>
+            <div class="value" id="countUpcoming">–</div>
+        </div>
+        <div class="stat-card success">
+            <h3>Online</h3>
+            <div class="value" id="countOnline">–</div>
+        </div>
+        <div class="stat-card">
+            <h3>Offline</h3>
+            <div class="value" id="countOffline">–</div>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="🔍 Search by student, company, or role...">
+        <select id="modeFilter">
+            <option value="">All Modes</option>
+            <option value="ONLINE">Online</option>
+            <option value="OFFLINE">Offline</option>
+            <option value="HYBRID">Hybrid</option>
+        </select>
+        <input type="date" id="dateFilter" placeholder="Filter by date">
+        <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✖ Clear</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadInterviews()">🔄 Refresh</button>
+        <button class="btn btn-primary" onclick="openScheduleModal()">+ Schedule Interview</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <div id="interviewsContainer">
+            <div class="loading"><span class="spinner"></span>Loading interviews...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══════════════ SCHEDULE / EDIT MODAL ═══════════════ -->
+<div class="modal-overlay" id="interviewModal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-header">
+            <h2 id="modalTitle">Schedule Interview</h2>
+            <button class="modal-close" onclick="closeModal('interviewModal')">&times;</button>
+        </div>
+
+        <div id="modalAlert" class="alert" style="display:none;"></div>
+
+        <form id="interviewForm">
+            <input type="hidden" id="interviewId">
+
+            <div class="form-group">
+                <label for="applicationId">Shortlisted Application *</label>
+                <select id="applicationId" required>
+                    <option value="">Loading shortlisted applications...</option>
+                </select>
+                <div class="form-hint">Only SHORTLISTED applications can be scheduled</div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="interviewDate">Interview Date *</label>
+                    <input type="date" id="interviewDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="interviewTime">Interview Time *</label>
+                    <input type="time" id="interviewTime" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="mode">Mode *</label>
+                    <select id="mode" required>
+                        <option value="">Select mode</option>
+                        <option value="ONLINE">Online</option>
+                        <option value="OFFLINE">Offline</option>
+                        <option value="HYBRID">Hybrid</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Location / Link</label>
+                    <input type="text" id="location" placeholder="e.g., Zoom link or Room 201">
+                    <div class="form-hint">For online: paste link. For offline: room/address.</div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('interviewModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">💾 Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══════════════ CANCEL CONFIRM MODAL ═══════════════ -->
+<div class="modal-overlay" id="cancelModal">
+    <div class="modal" style="max-width:420px;">
+        <div class="modal-header">
+            <h2>⚠️ Cancel Interview</h2>
+            <button class="modal-close" onclick="closeModal('cancelModal')">&times;</button>
+        </div>
+        <p style="padding:12px 0;color:#475569;">
+            Are you sure you want to cancel the interview for
+            <strong id="cancelTargetName">this student</strong>?
+            The application status will revert to <strong>SHORTLISTED</strong>.
+        </p>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('cancelModal')">Keep Interview</button>
+            <button class="btn btn-danger" id="confirmCancelBtn">🗑 Cancel Interview</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+    let allInterviews = [];
+    let shortlistedApplications = [];
+    let cancelTargetId = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!guardAdminPage()) return;
+
+        // Set minimum date to today
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('interviewDate').setAttribute('min', today);
+
+        await Promise.all([loadShortlistedApplications(), loadInterviews()]);
+
+        // Filters
+        document.getElementById('searchBox').addEventListener('input', applyFilters);
+        document.getElementById('modeFilter').addEventListener('change', applyFilters);
+        document.getElementById('dateFilter').addEventListener('change', applyFilters);
+
+        // Submit
+        document.getElementById('interviewForm').addEventListener('submit', saveInterview);
+        document.getElementById('confirmCancelBtn').addEventListener('click', confirmCancel);
+
+        // Overlay closes
+        document.getElementById('interviewModal').addEventListener('click', (e) => {
+            if (e.target.id === 'interviewModal') closeModal('interviewModal');
+        });
+        document.getElementById('cancelModal').addEventListener('click', (e) => {
+            if (e.target.id === 'cancelModal') closeModal('cancelModal');
+        });
+    });
+
+    // ─────────────────────────────────────────────────
+    // LOAD SHORTLISTED APPLICATIONS (for dropdown)
+    // ─────────────────────────────────────────────────
+    async function loadShortlistedApplications() {
+        try {
+            const res = await api.get('/admin/applications');
+            const all = res.data || [];
+            shortlistedApplications = all.filter(a => a.status === 'SHORTLISTED');
+
+            const dropdown = document.getElementById('applicationId');
+            if (!shortlistedApplications.length) {
+                dropdown.innerHTML = '<option value="">No shortlisted applications yet</option>';
+                return;
+            }
+
+            dropdown.innerHTML = '<option value="">Select an application</option>' +
+                shortlistedApplications.map(a => `
+                    <option value="${a.id}">
+                        ${escapeHtml(a.studentName)} — ${escapeHtml(a.jobRole)} @ ${escapeHtml(a.companyName)}
+                    </option>
+                `).join('');
+        } catch (error) {
+            console.error('Failed to load shortlisted applications:', error);
+        }
+    }
+
+    // ─────────────────────────────────────────────────
+    // LOAD INTERVIEWS
+    // ─────────────────────────────────────────────────
+    async function loadInterviews() {
+        const container = document.getElementById('interviewsContainer');
+        container.innerHTML = '<div class="loading"><span class="spinner"></span>Loading interviews...</div>';
+
+        try {
+            // Interviews come from applications marked as INTERVIEW_SCHEDULED
+            const appRes = await api.get('/admin/applications');
+            const all = appRes.data || [];
+            const scheduledApps = all.filter(a =>
+                a.status === 'INTERVIEW_SCHEDULED' || a.status === 'SELECTED'
+            );
+
+            // For each scheduled app, fetch interview details
+            const interviewPromises = scheduledApps.map(a =>
+                api.get(`/interviews/date/all`).catch(() => null)
+            );
+
+            // Simpler approach: fetch all interviews via a custom loop
+            // Since our backend doesn't have a "get all interviews" endpoint,
+            // we'll fetch by student id for each scheduled application
+            const detailed = [];
+            for (const app of scheduledApps) {
+                try {
+                    const studentsRes = await api.get(`/interviews/student/${app.studentId}`);
+                    const interviews = studentsRes.data || [];
+                    const match = interviews.find(i => i.applicationId === app.id);
+                    if (match) detailed.push(match);
+                } catch (e) {
+                    // skip
+                }
+            }
+
+            allInterviews = detailed;
+            updateCounts(allInterviews);
+            renderInterviews(allInterviews);
+
+        } catch (error) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Could not load interviews</h3>
+                    <p>${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    function updateCounts(list) {
+        setText('countTotal', list.length);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        setText('countUpcoming', list.filter(i => new Date(i.interviewDate) >= today).length);
+        setText('countOnline', list.filter(i => i.mode === 'ONLINE').length);
+        setText('countOffline', list.filter(i => i.mode === 'OFFLINE').length);
+    }
+
+    // ─────────────────────────────────────────────────
+    // RENDER TABLE
+    // ─────────────────────────────────────────────────
+    function renderInterviews(list) {
+        const container = document.getElementById('interviewsContainer');
+
+        if (!list.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No interviews scheduled</h3>
+                    <p>Shortlist applications first, then schedule interviews</p>
+                    <a href="/admin/applications.html" class="btn btn-primary" style="margin-top:12px;">Go to Applications</a>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Student</th>
+                            <th>Company</th>
+                            <th>Role</th>
+                            <th>Date & Time</th>
+                            <th>Mode</th>
+                            <th>Location</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${list.map((iv, i) => `
+                            <tr>
+                                <td>${i + 1}</td>
+                                <td><strong>${escapeHtml(iv.studentName)}</strong></td>
+                                <td>${escapeHtml(iv.companyName)}</td>
+                                <td>${escapeHtml(iv.jobRole)}</td>
+                                <td>
+                                    ${formatDate(iv.interviewDate)}
+                                    <div style="font-size:12px;color:#64748b;">${iv.interviewTime || 'TBD'}</div>
+                                </td>
+                                <td><span class="badge ${modeColor(iv.mode)}">${iv.mode}</span></td>
+                                <td>${iv.location ? escapeHtml(iv.location) : '<span style="color:#94a3b8;">–</span>'}</td>
+                                <td>
+                                    <div class="table-actions">
+                                        <button class="btn btn-sm btn-primary" onclick="openEditModal(${iv.id})">✏️ Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="openCancelModal(${iv.id})">🗑 Cancel</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function modeColor(mode) {
+        const map = {
+            'ONLINE':  'badge-blue',
+            'OFFLINE': 'badge-yellow',
+            'HYBRID':  'badge-purple'
+        };
+        return map[mode] || 'badge-gray';
+    }
+
+    // ─────────────────────────────────────────────────
+    // FILTERS
+    // ─────────────────────────────────────────────────
+    function applyFilters() {
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        const mode = document.getElementById('modeFilter').value;
+        const date = document.getElementById('dateFilter').value;
+
+        const filtered = allInterviews.filter(i => {
+            const matchesSearch = !q ||
+                i.studentName.toLowerCase().includes(q) ||
+                i.companyName.toLowerCase().includes(q) ||
+                i.jobRole.toLowerCase().includes(q);
+
+            const matchesMode = !mode || i.mode === mode;
+            const matchesDate = !date || i.interviewDate === date;
+
+            return matchesSearch && matchesMode && matchesDate;
+        });
+
+        renderInterviews(filtered);
+    }
+
+    function clearFilters() {
+        document.getElementById('searchBox').value = '';
+        document.getElementById('modeFilter').value = '';
+        document.getElementById('dateFilter').value = '';
+        renderInterviews(allInterviews);
+    }
+
+    // ─────────────────────────────────────────────────
+    // SCHEDULE / EDIT
+    // ─────────────────────────────────────────────────
+    async function openScheduleModal() {
+        await loadShortlistedApplications();
+
+        if (!shortlistedApplications.length) {
+            showMessage('No shortlisted applications available. Update an application status first.', 'warning');
+            return;
+        }
+
+        document.getElementById('modalTitle').textContent = 'Schedule Interview';
+        document.getElementById('interviewForm').reset();
+        document.getElementById('interviewId').value = '';
+        document.getElementById('modalAlert').style.display = 'none';
+        openModal('interviewModal');
+    }
+
+    function openEditModal(interviewId) {
+        const iv = allInterviews.find(x => x.id === interviewId);
+        if (!iv) return;
+
+        document.getElementById('modalTitle').textContent = 'Edit Interview';
+        document.getElementById('interviewId').value = iv.id;
+
+        // Add a hidden option for the current application (since it's already scheduled)
+        const dropdown = document.getElementById('applicationId');
+        dropdown.innerHTML = `<option value="${iv.applicationId}" selected>
+            ${escapeHtml(iv.studentName)} — ${escapeHtml(iv.jobRole)} @ ${escapeHtml(iv.companyName)}
+        </option>`;
+        dropdown.disabled = true;
+
+        document.getElementById('interviewDate').value = iv.interviewDate || '';
+        document.getElementById('interviewTime').value = iv.interviewTime || '';
+        document.getElementById('mode').value = iv.mode || '';
+        document.getElementById('location').value = iv.location || '';
+        document.getElementById('modalAlert').style.display = 'none';
+
+        openModal('interviewModal');
+    }
+
+    async function saveInterview(e) {
+        e.preventDefault();
+
+        const btn = document.getElementById('saveBtn');
+        const alertBox = document.getElementById('modalAlert');
+        const id = document.getElementById('interviewId').value;
+
+        const payload = {
+            applicationId: parseInt(document.getElementById('applicationId').value),
+            interviewDate: document.getElementById('interviewDate').value,
+            interviewTime: document.getElementById('interviewTime').value + ':00',
+            mode: document.getElementById('mode').value,
+            location: document.getElementById('location').value.trim() || null
+        };
+
+        // Validation
+        if (!payload.applicationId) {
+            showModalAlert('Please select a shortlisted application', 'error'); return;
+        }
+        if (!payload.interviewDate) {
+            showModalAlert('Interview date is required', 'error'); return;
+        }
+        if (!payload.interviewTime) {
+            showModalAlert('Interview time is required', 'error'); return;
+        }
+        if (!payload.mode) {
+            showModalAlert('Mode is required', 'error'); return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        alertBox.style.display = 'none';
+
+        try {
+            if (id) {
+                await api.put(`/interviews/${id}`, payload);
+                showMessage('Interview updated!', 'success');
+            } else {
+                await api.post('/interviews', payload);
+                showMessage('Interview scheduled!', 'success');
+            }
+
+            closeModal('interviewModal');
+            document.getElementById('applicationId').disabled = false;
+            await Promise.all([loadShortlistedApplications(), loadInterviews()]);
+
+        } catch (error) {
+            showModalAlert('Save failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Save';
+        }
+    }
+
+    function showModalAlert(message, type) {
+        const alertBox = document.getElementById('modalAlert');
+        alertBox.className = 'alert alert-' + (type === 'error' ? 'error' : 'success');
+        alertBox.textContent = message;
+        alertBox.style.display = 'block';
+    }
+
+    // ─────────────────────────────────────────────────
+    // CANCEL INTERVIEW
+    // ─────────────────────────────────────────────────
+    function openCancelModal(interviewId) {
+        const iv = allInterviews.find(x => x.id === interviewId);
+        if (!iv) return;
+
+        cancelTargetId = interviewId;
+        document.getElementById('cancelTargetName').textContent = iv.studentName;
+        openModal('cancelModal');
+    }
+
+    async function confirmCancel() {
+        if (!cancelTargetId) return;
+
+        const btn = document.getElementById('confirmCancelBtn');
+        btn.disabled = true;
+        btn.textContent = 'Cancelling...';
+
+        try {
+            await api.delete(`/interviews/${cancelTargetId}`);
+            showMessage('Interview cancelled', 'success');
+            closeModal('cancelModal');
+            cancelTargetId = null;
+
+            await loadInterviews();
+
+        } catch (error) {
+            showMessage('Cancel failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🗑 Cancel Interview';
+        }
+    }
+</script>
+
+<style>
+    /* Fix date filter input */
+    input[type="date"] {
+        min-width: 160px;
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 14px;
+        font-family: inherit;
+    }
+    input[type="date"]:focus {
+        outline: none;
+        border-color: #2563eb;
+    }
+</style>
+</body>
+</html>

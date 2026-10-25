@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/student/dashboard.html" class="navbar-brand">💼 Smart Placement</a>
+    <div class="navbar-links">
+        <a href="/student/dashboard.html" class="active">Dashboard</a>
+        <a href="/student/jobs.html">Jobs</a>
+        <a href="/student/applications.html">My Applications</a>
+        <a href="/student/profile.html">Profile</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Welcome, <span id="welcomeName">Student</span>! 👋</h1>
+        <p>Here's an overview of your placement activity</p>
+    </div>
+
+    <!-- ═══════════════ STAT CARDS ═══════════════ -->
+    <div class="stats-grid">
+        <div class="stat-card info">
+            <h3>Eligible Jobs</h3>
+            <div class="value" id="eligibleCount">–</div>
+        </div>
+        <div class="stat-card warning">
+            <h3>Total Applications</h3>
+            <div class="value" id="applicationCount">–</div>
+        </div>
+        <div class="stat-card success">
+            <h3>Shortlisted</h3>
+            <div class="value" id="shortlistedCount">–</div>
+        </div>
+        <div class="stat-card">
+            <h3>Interviews Scheduled</h3>
+            <div class="value" id="interviewCount">–</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ PROFILE SUMMARY ═══════════════ -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📋 Profile Summary</div>
+            <a href="/student/profile.html" class="btn btn-sm btn-primary">Edit Profile</a>
+        </div>
+        <div class="profile-grid">
+            <div class="profile-item">
+                <div class="profile-label">Department</div>
+                <div class="profile-value" id="profileDepartment">–</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">CGPA</div>
+                <div class="profile-value" id="profileCgpa">–</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">Graduation Year</div>
+                <div class="profile-value" id="profileGradYear">–</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">Skills</div>
+                <div class="profile-value" id="profileSkills">–</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ RECENT APPLICATIONS ═══════════════ -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📄 Recent Applications</div>
+            <a href="/student/applications.html" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+        <div id="recentApplications">
+            <div class="loading"><span class="spinner"></span>Loading applications...</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ TOP ELIGIBLE JOBS ═══════════════ -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">🎯 Recommended Jobs</div>
+            <a href="/student/jobs.html" class="btn btn-sm btn-secondary">Browse All</a>
+        </div>
+        <div id="recommendedJobs">
+            <div class="loading"><span class="spinner"></span>Loading jobs...</div>
+        </div>
+    </div>
+
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/student.js"></script>
+<script>
+    // Page-specific initializer
+    document.addEventListener('DOMContentLoaded', initStudentDashboard);
+</script>
+</body>
+</html>

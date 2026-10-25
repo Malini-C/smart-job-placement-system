@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Jobs — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/admin/dashboard.html" class="navbar-brand">💼 Smart Placement (Admin)</a>
+    <div class="navbar-links">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/companies.html">Companies</a>
+        <a href="/admin/jobs.html" class="active">Jobs</a>
+        <a href="/admin/applications.html">Applications</a>
+        <a href="/admin/interviews.html">Interviews</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Manage Job Drives 💼</h1>
+        <p>Create and manage job drives for companies</p>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="🔍 Search by role or company...">
+        <select id="companyFilter">
+            <option value="">All Companies</option>
+        </select>
+        <select id="statusFilter">
+            <option value="">All Status</option>
+            <option value="active">Active (deadline future)</option>
+            <option value="expired">Expired</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadJobs()">🔄 Refresh</button>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ Create Job Drive</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <div id="jobsContainer">
+            <div class="loading"><span class="spinner"></span>Loading jobs...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══════════════ CREATE / EDIT MODAL ═══════════════ -->
+<div class="modal-overlay" id="jobModal">
+    <div class="modal" style="max-width:640px;">
+        <div class="modal-header">
+            <h2 id="modalTitle">Create Job Drive</h2>
+            <button class="modal-close" onclick="closeModal('jobModal')">&times;</button>
+        </div>
+
+        <div id="modalAlert" class="alert" style="display:none;"></div>
+
+        <form id="jobForm">
+            <input type="hidden" id="jobId">
+
+            <div class="form-group">
+                <label for="companyId">Company *</label>
+                <select id="companyId" required>
+                    <option value="">Select a company</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="jobRole">Job Role *</label>
+                <input type="text" id="jobRole" placeholder="e.g., Software Engineer" required maxlength="100">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="packageAmount">Package (₹ per annum) *</label>
+                    <input type="number" id="packageAmount" min="1" step="1000" placeholder="e.g., 2500000" required>
+                    <div class="form-hint">Example: 2500000 = ₹25 LPA</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="requiredCgpa">Required CGPA *</label>
+                    <input type="number" id="requiredCgpa" min="0" max="10" step="0.01" placeholder="e.g., 7.5" required>
+                    <div class="form-hint">Between 0.0 and 10.0</div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="deadline">Application Deadline *</label>
+                    <input type="date" id="deadline" required>
+                    <div class="form-hint">Must be a future date</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Job Location *</label>
+                    <input type="text" id="location" placeholder="e.g., Bangalore" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="requiredSkills">Required Skills</label>
+                <textarea id="requiredSkills" rows="3" placeholder="e.g., Java, Spring Boot, MySQL, Problem Solving"></textarea>
+                <div class="form-hint">Comma-separated list of skills required for this role</div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('jobModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">💾 Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══════════════ DELETE CONFIRM MODAL ═══════════════ -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal" style="max-width:420px;">
+        <div class="modal-header">
+            <h2>⚠️ Confirm Delete</h2>
+            <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+        </div>
+        <p style="padding:12px 0;color:#475569;">
+            Are you sure you want to delete the job drive <strong id="deleteTargetName">this job</strong>?
+            This will also delete all related applications and interviews. This action cannot be undone.
+        </p>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
+            <button class="btn btn-danger" id="confirmDeleteBtn">🗑 Delete</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+    let allJobs = [];
+    let allCompanies = [];
+    let deleteTargetId = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!guardAdminPage()) return;
+
+        // Set minimum date on deadline input to today
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('deadline').setAttribute('min', today);
+
+        await Promise.all([loadCompanies(), loadJobs()]);
+
+        // Search & filter
+        document.getElementById('searchBox').addEventListener('input', applyFilters);
+        document.getElementById('companyFilter').addEventListener('change', applyFilters);
+        document.getElementById('statusFilter').addEventListener('change', applyFilters);
+
+        // Form submit
+        document.getElementById('jobForm').addEventListener('submit', saveJob);
+        document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
+
+        // Overlay click to close
+        document.getElementById('jobModal').addEventListener('click', (e) => {
+            if (e.target.id === 'jobModal') closeModal('jobModal');
+        });
+        document.getElementById('deleteModal').addEventListener('click', (e) => {
+            if (e.target.id === 'deleteModal') closeModal('deleteModal');
+        });
+    });
+
+    // ─────────────────────────────────────────────────
+    // LOAD COMPANIES (for dropdown)
+    // ─────────────────────────────────────────────────
+    async function loadCompanies() {
+        try {
+            const res = await api.get('/companies');
+            allCompanies = res.data || [];
+
+            // Populate dropdown in modal
+            const dropdown = document.getElementById('companyId');
+            dropdown.innerHTML = '<option value="">Select a company</option>' +
+                allCompanies.map(c => `<option value="${c.id}">${escapeHtml(c.companyName)} — ${escapeHtml(c.location)}</option>`).join('');
+
+            // Populate filter dropdown
+            const filterDropdown = document.getElementById('companyFilter');
+            filterDropdown.innerHTML = '<option value="">All Companies</option>' +
+                allCompanies.map(c => `<option value="${c.id}">${escapeHtml(c.companyName)}</option>`).join('');
+
+        } catch (error) {
+            showMessage('Could not load companies: ' + error.message, 'error');
+        }
+    }
+
+    // ─────────────────────────────────────────────────
+    // LOAD JOBS
+    // ─────────────────────────────────────────────────
+    async function loadJobs() {
+        const container = document.getElementById('jobsContainer');
+        container.innerHTML = '<div class="loading"><span class="spinner"></span>Loading jobs...</div>';
+
+        try {
+            const res = await api.get('/jobs');
+            allJobs = res.data || [];
+            renderJobs(allJobs);
+        } catch (error) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Could not load jobs</h3>
+                    <p>${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    // ─────────────────────────────────────────────────
+    // RENDER JOBS TABLE
+    // ─────────────────────────────────────────────────
+    function renderJobs(jobs) {
+        const container = document.getElementById('jobsContainer');
+
+        if (!jobs.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No job drives yet</h3>
+                    <p>Create your first job drive to get started</p>
+                    <button class="btn btn-primary" style="margin-top:12px;" onclick="openCreateModal()">+ Create Job Drive</button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Role</th>
+                            <th>Package</th>
+                            <th>Required CGPA</th>
+                            <th>Deadline</th>
+                            <th>Applicants</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${jobs.map(j => {
+            const expired = new Date(j.deadline) < new Date();
+            return `
+                                <tr>
+                                    <td><strong>${escapeHtml(j.companyName)}</strong></td>
+                                    <td>
+                                        ${escapeHtml(j.jobRole)}
+                                        ${expired
+                ? '<div style="font-size:11px;color:#ef4444;margin-top:2px;">EXPIRED</div>'
+                : '<div style="font-size:11px;color:#10b981;margin-top:2px;">ACTIVE</div>'}
+                                    </td>
+                                    <td>${formatPackage(j.packageAmount)}</td>
+                                    <td>${j.requiredCgpa}</td>
+                                    <td>${formatDate(j.deadline)}</td>
+                                    <td><span class="badge badge-blue">${j.applicationCount || 0}</span></td>
+                                    <td>
+                                        <div class="table-actions">
+                                            <button class="btn btn-sm btn-primary" onclick="openEditModal(${j.id})">✏️ Edit</button>
+                                            <button class="btn btn-sm btn-danger" onclick="openDeleteModal(${j.id})">🗑 Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // ─────────────────────────────────────────────────
+    // FILTERS
+    // ─────────────────────────────────────────────────
+    function applyFilters() {
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        const companyId = document.getElementById('companyFilter').value;
+        const status = document.getElementById('statusFilter').value;
+
+        let filtered = allJobs.filter(j => {
+            const matchesSearch = !q ||
+                j.jobRole.toLowerCase().includes(q) ||
+                j.companyName.toLowerCase().includes(q);
+
+            const matchesCompany = !companyId || String(j.companyId) === String(companyId);
+
+            const expired = new Date(j.deadline) < new Date();
+            const matchesStatus =
+                !status ||
+                (status === 'active' && !expired) ||
+                (status === 'expired' && expired);
+
+            return matchesSearch && matchesCompany && matchesStatus;
+        });
+
+        renderJobs(filtered);
+    }
+
+    // ─────────────────────────────────────────────────
+    // CREATE / EDIT
+    // ─────────────────────────────────────────────────
+    function openCreateModal() {
+        document.getElementById('modalTitle').textContent = 'Create Job Drive';
+        document.getElementById('jobForm').reset();
+        document.getElementById('jobId').value = '';
+        document.getElementById('modalAlert').style.display = 'none';
+        openModal('jobModal');
+    }
+
+    function openEditModal(id) {
+        const j = allJobs.find(x => x.id === id);
+        if (!j) return;
+
+        document.getElementById('modalTitle').textContent = 'Edit Job Drive';
+        document.getElementById('jobId').value = j.id;
+        document.getElementById('companyId').value = j.companyId;
+        document.getElementById('jobRole').value = j.jobRole || '';
+        document.getElementById('packageAmount').value = j.packageAmount || '';
+        document.getElementById('requiredCgpa').value = j.requiredCgpa || '';
+        document.getElementById('deadline').value = j.deadline || '';
+        document.getElementById('location').value = j.location || '';
+        document.getElementById('requiredSkills').value = j.requiredSkills || '';
+        document.getElementById('modalAlert').style.display = 'none';
+        openModal('jobModal');
+    }
+
+    async function saveJob(e) {
+        e.preventDefault();
+
+        const btn = document.getElementById('saveBtn');
+        const alertBox = document.getElementById('modalAlert');
+        const id = document.getElementById('jobId').value;
+
+        const payload = {
+            companyId: parseInt(document.getElementById('companyId').value),
+            jobRole: document.getElementById('jobRole').value.trim(),
+            packageAmount: parseFloat(document.getElementById('packageAmount').value),
+            requiredCgpa: parseFloat(document.getElementById('requiredCgpa').value),
+            requiredSkills: document.getElementById('requiredSkills').value.trim() || null,
+            deadline: document.getElementById('deadline').value,
+            location: document.getElementById('location').value.trim()
+        };
+
+        // Validation
+        if (!payload.companyId) {
+            showModalAlert('Please select a company', 'error'); return;
+        }
+        if (!payload.jobRole) {
+            showModalAlert('Job role is required', 'error'); return;
+        }
+        if (isNaN(payload.packageAmount) || payload.packageAmount <= 0) {
+            showModalAlert('Package amount must be a positive number', 'error'); return;
+        }
+        if (isNaN(payload.requiredCgpa) || payload.requiredCgpa < 0 || payload.requiredCgpa > 10) {
+            showModalAlert('Required CGPA must be between 0.0 and 10.0', 'error'); return;
+        }
+        if (!payload.deadline) {
+            showModalAlert('Deadline is required', 'error'); return;
+        }
+        if (!payload.location) {
+            showModalAlert('Location is required', 'error'); return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        alertBox.style.display = 'none';
+
+        try {
+            if (id) {
+                await api.put(`/jobs/${id}`, payload);
+                showMessage('Job drive updated!', 'success');
+            } else {
+                await api.post('/jobs', payload);
+                showMessage('Job drive created!', 'success');
+            }
+            closeModal('jobModal');
+            await loadJobs();
+
+        } catch (error) {
+            showModalAlert('Save failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Save';
+        }
+    }
+
+    function showModalAlert(message, type) {
+        const alertBox = document.getElementById('modalAlert');
+        alertBox.className = 'alert alert-' + (type === 'error' ? 'error' : 'success');
+        alertBox.textContent = message;
+        alertBox.style.display = 'block';
+    }
+
+    // ─────────────────────────────────────────────────
+    // DELETE
+    // ─────────────────────────────────────────────────
+    function openDeleteModal(id) {
+        const j = allJobs.find(x => x.id === id);
+        if (!j) return;
+        deleteTargetId = id;
+        document.getElementById('deleteTargetName').textContent = `${j.jobRole} at ${j.companyName}`;
+        openModal('deleteModal');
+    }
+
+    async function confirmDelete() {
+        if (!deleteTargetId) return;
+
+        const btn = document.getElementById('confirmDeleteBtn');
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
+
+        try {
+            await api.delete(`/jobs/${deleteTargetId}`);
+            showMessage('Job drive deleted', 'success');
+            closeModal('deleteModal');
+            deleteTargetId = null;
+            await loadJobs();
+        } catch (error) {
+            showMessage('Delete failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🗑 Delete';
+        }
+    }
+</script>
+</body>
+</html>

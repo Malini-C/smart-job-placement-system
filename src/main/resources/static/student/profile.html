@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/student/dashboard.html" class="navbar-brand">💼 Smart Placement</a>
+    <div class="navbar-links">
+        <a href="/student/dashboard.html">Dashboard</a>
+        <a href="/student/jobs.html">Jobs</a>
+        <a href="/student/applications.html">My Applications</a>
+        <a href="/student/profile.html" class="active">Profile</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>My Profile 👤</h1>
+        <p>Keep your profile updated to stay eligible for job opportunities</p>
+    </div>
+
+    <div class="profile-layout">
+
+        <!-- ═══════════════ PROFILE CARD ═══════════════ -->
+        <div class="card profile-card">
+            <div class="profile-avatar" id="profileAvatar">JD</div>
+            <div class="profile-name" id="profileName">Loading...</div>
+            <div class="profile-email" id="profileEmail">Loading...</div>
+            <div class="profile-role">
+                <span class="badge badge-blue">STUDENT</span>
+            </div>
+
+            <div class="profile-quick-stats">
+                <div class="quick-stat">
+                    <div class="quick-stat-value" id="quickCgpa">–</div>
+                    <div class="quick-stat-label">CGPA</div>
+                </div>
+                <div class="quick-stat">
+                    <div class="quick-stat-value" id="quickGradYear">–</div>
+                    <div class="quick-stat-label">Grad Year</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════ EDIT FORM ═══════════════ -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">✏️ Edit Profile</div>
+            </div>
+
+            <div id="profileAlert" class="alert" style="display:none;"></div>
+
+            <form id="profileForm">
+                <div class="form-group">
+                    <label for="department">Department *</label>
+                    <select id="department" required>
+                        <option value="">Select your department</option>
+                        <option value="Computer Science">Computer Science</option>
+                        <option value="Information Technology">Information Technology</option>
+                        <option value="Electronics">Electronics</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Mechanical">Mechanical</option>
+                        <option value="Civil">Civil</option>
+                        <option value="Chemical">Chemical</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cgpa">CGPA * (0.0 – 10.0)</label>
+                        <input type="number" id="cgpa" step="0.01" min="0" max="10" placeholder="e.g., 8.5" required>
+                        <div class="form-hint">Must be between 0.0 and 10.0</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="graduationYear">Graduation Year *</label>
+                        <input type="number" id="graduationYear" min="2020" max="2035" placeholder="e.g., 2026" required>
+                        <div class="form-hint">Between 2020 and 2035</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="skills">Skills</label>
+                    <textarea id="skills" rows="4" placeholder="e.g., Java, Spring Boot, React, MySQL, Data Structures"></textarea>
+                    <div class="form-hint">Comma-separated list of your technical skills</div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="loadProfile()">Reset</button>
+                    <button type="submit" class="btn btn-primary" id="saveBtn">
+                        💾 Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/student.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        if (!guardStudentPage()) return;
+        loadProfile();
+    });
+
+    async function loadProfile() {
+        const alertBox = document.getElementById('profileAlert');
+        alertBox.style.display = 'none';
+
+        try {
+            const res = await api.get('/students/profile');
+            const p = res.data;
+
+            // Profile card
+            const name = p.name || localStorage.getItem('name') || 'Student';
+            document.getElementById('profileName').textContent = name;
+            document.getElementById('profileEmail').textContent = p.email || '';
+            document.getElementById('profileAvatar').textContent = getInitials(name);
+            document.getElementById('quickCgpa').textContent = p.cgpa ? p.cgpa.toFixed(2) : '–';
+            document.getElementById('quickGradYear').textContent = p.graduationYear || '–';
+
+            // Form fields
+            document.getElementById('department').value = p.department || '';
+            document.getElementById('cgpa').value = p.cgpa || '';
+            document.getElementById('graduationYear').value = p.graduationYear || '';
+            document.getElementById('skills').value = p.skills || '';
+
+        } catch (error) {
+            if (error.message.includes('not found')) {
+                // Profile doesn't exist yet — leave form empty
+                const name = localStorage.getItem('name') || 'Student';
+                document.getElementById('profileName').textContent = name;
+                document.getElementById('profileEmail').textContent = localStorage.getItem('email') || '';
+                document.getElementById('profileAvatar').textContent = getInitials(name);
+
+                showProfileAlert('Please complete your profile to become eligible for jobs.', 'info');
+            } else {
+                showProfileAlert('Could not load profile: ' + error.message, 'error');
+            }
+        }
+
+        // Wire up form submit
+        document.getElementById('profileForm').addEventListener('submit', saveProfile);
+    }
+
+    async function saveProfile(e) {
+        e.preventDefault();
+
+        const btn = document.getElementById('saveBtn');
+        const alertBox = document.getElementById('profileAlert');
+
+        const department = document.getElementById('department').value.trim();
+        const cgpa = parseFloat(document.getElementById('cgpa').value);
+        const graduationYear = parseInt(document.getElementById('graduationYear').value);
+        const skills = document.getElementById('skills').value.trim();
+
+        // Client-side validation
+        if (!department) {
+            showProfileAlert('Department is required', 'error');
+            return;
+        }
+        if (isNaN(cgpa) || cgpa < 0 || cgpa > 10) {
+            showProfileAlert('CGPA must be between 0.0 and 10.0', 'error');
+            return;
+        }
+        if (isNaN(graduationYear) || graduationYear < 2020 || graduationYear > 2035) {
+            showProfileAlert('Graduation year must be between 2020 and 2035', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        alertBox.style.display = 'none';
+
+        try {
+            const res = await api.put('/students/profile', {
+                department,
+                cgpa,
+                graduationYear,
+                skills
+            });
+
+            showProfileAlert('✓ Profile saved successfully!', 'success');
+
+            // Update card
+            document.getElementById('quickCgpa').textContent = res.data.cgpa.toFixed(2);
+            document.getElementById('quickGradYear').textContent = res.data.graduationYear;
+
+            showMessage('Profile updated!', 'success');
+
+        } catch (error) {
+            showProfileAlert('Save failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Save Changes';
+        }
+    }
+
+    function showProfileAlert(message, type) {
+        const alertBox = document.getElementById('profileAlert');
+        alertBox.className = 'alert alert-' + (type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
+        alertBox.textContent = message;
+        alertBox.style.display = 'block';
+
+        // Auto-hide success/info after 3 seconds
+        if (type !== 'error') {
+            setTimeout(() => { alertBox.style.display = 'none'; }, 3000);
+        }
+    }
+
+    function getInitials(name) {
+        if (!name) return '?';
+        return name.split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map(n => n[0].toUpperCase())
+            .join('');
+    }
+</script>
+
+<style>
+    .profile-layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+
+    @media (max-width: 768px) {
+        .profile-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .profile-card {
+        text-align: center;
+        position: sticky;
+        top: 88px;
+    }
+
+    .profile-avatar {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #2563eb, #1e40af);
+        color: white;
+        font-size: 32px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+    }
+
+    .profile-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 4px;
+    }
+
+    .profile-email {
+        font-size: 13px;
+        color: #64748b;
+        margin-bottom: 14px;
+        word-break: break-word;
+    }
+
+    .profile-role {
+        margin-bottom: 20px;
+    }
+
+    .profile-quick-stats {
+        display: flex;
+        gap: 12px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .quick-stat {
+        flex: 1;
+    }
+
+    .quick-stat-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #2563eb;
+    }
+
+    .quick-stat-label {
+        font-size: 11px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .form-hint {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 4px;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        padding-top: 16px;
+        border-top: 1px solid #e2e8f0;
+        margin-top: 20px;
+    }
+</style>
+</body>
+</html>

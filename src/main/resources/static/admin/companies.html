@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Companies — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/admin/dashboard.html" class="navbar-brand">💼 Smart Placement (Admin)</a>
+    <div class="navbar-links">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/companies.html" class="active">Companies</a>
+        <a href="/admin/jobs.html">Jobs</a>
+        <a href="/admin/applications.html">Applications</a>
+        <a href="/admin/interviews.html">Interviews</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Manage Companies 🏢</h1>
+        <p>Add and manage companies that visit your campus</p>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="🔍 Search by name or location...">
+        <button class="btn btn-secondary btn-sm" onclick="loadCompanies()">🔄 Refresh</button>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ Add Company</button>
+    </div>
+
+    <!-- Table Container -->
+    <div class="card">
+        <div id="companiesContainer">
+            <div class="loading"><span class="spinner"></span>Loading companies...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══════════════ CREATE / EDIT MODAL ═══════════════ -->
+<div class="modal-overlay" id="companyModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 id="modalTitle">Add Company</h2>
+            <button class="modal-close" onclick="closeModal('companyModal')">&times;</button>
+        </div>
+
+        <div id="modalAlert" class="alert" style="display:none;"></div>
+
+        <form id="companyForm">
+            <input type="hidden" id="companyId">
+
+            <div class="form-group">
+                <label for="companyName">Company Name *</label>
+                <input type="text" id="companyName" placeholder="e.g., Google" required maxlength="200" minlength="2">
+            </div>
+
+            <div class="form-group">
+                <label for="location">Location *</label>
+                <input type="text" id="location" placeholder="e.g., Bangalore, India" required>
+            </div>
+
+            <div class="form-group">
+                <label for="website">Website</label>
+                <input type="text" id="website" placeholder="https://example.com">
+                <div class="form-hint">Optional — full URL starting with http:// or https://</div>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" rows="4" placeholder="Brief description of the company..."></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('companyModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">💾 Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══════════════ DELETE CONFIRM MODAL ═══════════════ -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal" style="max-width:420px;">
+        <div class="modal-header">
+            <h2>⚠️ Confirm Delete</h2>
+            <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+        </div>
+        <p style="padding:12px 0;color:#475569;">
+            Are you sure you want to delete <strong id="deleteTargetName">this company</strong>?
+            This will also delete all related job drives and applications. This action cannot be undone.
+        </p>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
+            <button class="btn btn-danger" id="confirmDeleteBtn">🗑 Delete</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+    let allCompanies = [];
+    let deleteTargetId = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!guardAdminPage()) return;
+        await loadCompanies();
+
+        // Search filter
+        document.getElementById('searchBox').addEventListener('input', applySearch);
+
+        // Form submit
+        document.getElementById('companyForm').addEventListener('submit', saveCompany);
+
+        // Delete confirm
+        document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
+
+        // Close modal on overlay click
+        document.getElementById('companyModal').addEventListener('click', (e) => {
+            if (e.target.id === 'companyModal') closeModal('companyModal');
+        });
+        document.getElementById('deleteModal').addEventListener('click', (e) => {
+            if (e.target.id === 'deleteModal') closeModal('deleteModal');
+        });
+    });
+
+    // ─────────────────────────────────────────────────
+    // LOAD COMPANIES
+    // ─────────────────────────────────────────────────
+    async function loadCompanies() {
+        const container = document.getElementById('companiesContainer');
+        container.innerHTML = '<div class="loading"><span class="spinner"></span>Loading companies...</div>';
+
+        try {
+            const res = await api.get('/companies');
+            allCompanies = res.data || [];
+            renderCompanies(allCompanies);
+        } catch (error) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Could not load companies</h3>
+                    <p>${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    // ─────────────────────────────────────────────────
+    // RENDER COMPANIES TABLE
+    // ─────────────────────────────────────────────────
+    function renderCompanies(companies) {
+        const container = document.getElementById('companiesContainer');
+
+        if (!companies.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No companies yet</h3>
+                    <p>Add your first company to get started</p>
+                    <button class="btn btn-primary" style="margin-top:12px;" onclick="openCreateModal()">+ Add Company</button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Company Name</th>
+                            <th>Location</th>
+                            <th>Website</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${companies.map((c, i) => `
+                            <tr>
+                                <td>${i + 1}</td>
+                                <td><strong>${escapeHtml(c.companyName)}</strong></td>
+                                <td>${escapeHtml(c.location)}</td>
+                                <td>
+                                    ${c.website
+            ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener" style="color:#2563eb;">Visit ↗</a>`
+            : '<span style="color:#94a3b8;">–</span>'}
+                                </td>
+                                <td>
+                                    <div class="table-actions">
+                                        <button class="btn btn-sm btn-primary" onclick="openEditModal(${c.id})">✏️ Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="openDeleteModal(${c.id})">🗑 Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // ─────────────────────────────────────────────────
+    // SEARCH
+    // ─────────────────────────────────────────────────
+    function applySearch() {
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        if (!q) {
+            renderCompanies(allCompanies);
+            return;
+        }
+        const filtered = allCompanies.filter(c =>
+            c.companyName.toLowerCase().includes(q) ||
+            c.location.toLowerCase().includes(q)
+        );
+        renderCompanies(filtered);
+    }
+
+    // ─────────────────────────────────────────────────
+    // CREATE / EDIT
+    // ─────────────────────────────────────────────────
+    function openCreateModal() {
+        document.getElementById('modalTitle').textContent = 'Add Company';
+        document.getElementById('companyForm').reset();
+        document.getElementById('companyId').value = '';
+        document.getElementById('modalAlert').style.display = 'none';
+        openModal('companyModal');
+    }
+
+    function openEditModal(id) {
+        const c = allCompanies.find(x => x.id === id);
+        if (!c) return;
+
+        document.getElementById('modalTitle').textContent = 'Edit Company';
+        document.getElementById('companyId').value = c.id;
+        document.getElementById('companyName').value = c.companyName || '';
+        document.getElementById('location').value = c.location || '';
+        document.getElementById('website').value = c.website || '';
+        document.getElementById('description').value = c.description || '';
+        document.getElementById('modalAlert').style.display = 'none';
+        openModal('companyModal');
+    }
+
+    async function saveCompany(e) {
+        e.preventDefault();
+
+        const btn = document.getElementById('saveBtn');
+        const alertBox = document.getElementById('modalAlert');
+
+        const id = document.getElementById('companyId').value;
+        const payload = {
+            companyName: document.getElementById('companyName').value.trim(),
+            location: document.getElementById('location').value.trim(),
+            website: document.getElementById('website').value.trim() || null,
+            description: document.getElementById('description').value.trim() || null
+        };
+
+        if (!payload.companyName || !payload.location) {
+            showModalAlert('Company name and location are required', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        alertBox.style.display = 'none';
+
+        try {
+            if (id) {
+                await api.put(`/companies/${id}`, payload);
+                showMessage('Company updated!', 'success');
+            } else {
+                await api.post('/companies', payload);
+                showMessage('Company created!', 'success');
+            }
+
+            closeModal('companyModal');
+            await loadCompanies();
+
+        } catch (error) {
+            showModalAlert('Save failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Save';
+        }
+    }
+
+    function showModalAlert(message, type) {
+        const alertBox = document.getElementById('modalAlert');
+        alertBox.className = 'alert alert-' + (type === 'error' ? 'error' : 'success');
+        alertBox.textContent = message;
+        alertBox.style.display = 'block';
+    }
+
+    // ─────────────────────────────────────────────────
+    // DELETE
+    // ─────────────────────────────────────────────────
+    function openDeleteModal(id) {
+        const c = allCompanies.find(x => x.id === id);
+        if (!c) return;
+        deleteTargetId = id;
+        document.getElementById('deleteTargetName').textContent = c.companyName;
+        openModal('deleteModal');
+    }
+
+    async function confirmDelete() {
+        if (!deleteTargetId) return;
+
+        const btn = document.getElementById('confirmDeleteBtn');
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
+
+        try {
+            await api.delete(`/companies/${deleteTargetId}`);
+            showMessage('Company deleted', 'success');
+            closeModal('deleteModal');
+            deleteTargetId = null;
+            await loadCompanies();
+        } catch (error) {
+            showMessage('Delete failed: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🗑 Delete';
+        }
+    }
+</script>
+</body>
+</html>

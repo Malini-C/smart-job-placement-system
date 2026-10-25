@@ -1,0 +1,364 @@
+{
+  "info": {
+    "name": "Smart Job Placement System",
+    "description": "Complete API collection for testing the Smart Job Placement System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api" },
+    { "key": "adminToken", "value": "" },
+    { "key": "studentToken", "value": "" },
+    { "key": "companyId", "value": "" },
+    { "key": "jobDriveId", "value": "" },
+    { "key": "applicationId", "value": "" },
+    { "key": "interviewId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@placement.com\",\n  \"password\": \"admin123\",\n  \"role\": \"ADMIN\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Register Student",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@college.edu\",\n  \"password\": \"student123\",\n  \"role\": \"STUDENT\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Login Admin (saves token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('adminToken', res.data.token);",
+                  "console.log('Admin token saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@placement.com\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login Student (saves token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('studentToken', res.data.token);",
+                  "console.log('Student token saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@college.edu\",\n  \"password\": \"student123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Admin - Companies",
+      "item": [
+        {
+          "name": "Create Company (saves id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('companyId', res.data.id);",
+                  "console.log('Company id saved: ' + res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Tesla\",\n  \"location\": \"Bangalore\",\n  \"website\": \"https://tesla.com\",\n  \"description\": \"Electric vehicle company\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/companies", "host": ["{{baseUrl}}"], "path": ["companies"] }
+          }
+        },
+        {
+          "name": "Get All Companies",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/companies", "host": ["{{baseUrl}}"], "path": ["companies"] }
+          }
+        },
+        {
+          "name": "Update Company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Tesla Inc\",\n  \"location\": \"Bangalore\",\n  \"website\": \"https://tesla.com\",\n  \"description\": \"EV company\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["companies", "{{companyId}}"] }
+          }
+        },
+        {
+          "name": "Delete Company",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["companies", "{{companyId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Admin - Job Drives",
+      "item": [
+        {
+          "name": "Create Job Drive (saves id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('jobDriveId', res.data.id);",
+                  "console.log('Job id saved: ' + res.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": {{companyId}},\n  \"jobRole\": \"Software Engineer\",\n  \"packageAmount\": 2500000,\n  \"requiredCgpa\": 7.5,\n  \"requiredSkills\": \"Java, Spring Boot, SQL\",\n  \"deadline\": \"2027-12-31\",\n  \"location\": \"Bangalore\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/jobs", "host": ["{{baseUrl}}"], "path": ["jobs"] }
+          }
+        },
+        {
+          "name": "Get All Job Drives",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/jobs", "host": ["{{baseUrl}}"], "path": ["jobs"] }
+          }
+        },
+        {
+          "name": "Get Active Job Drives",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/jobs/active", "host": ["{{baseUrl}}"], "path": ["jobs", "active"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Student Flow",
+      "item": [
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"Computer Science\",\n  \"cgpa\": 8.5,\n  \"graduationYear\": 2026,\n  \"skills\": \"Java, Spring Boot, MySQL\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/students/profile", "host": ["{{baseUrl}}"], "path": ["students", "profile"] }
+          }
+        },
+        {
+          "name": "Get Eligible Jobs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/students/jobs/eligible", "host": ["{{baseUrl}}"], "path": ["students", "jobs", "eligible"] }
+          }
+        },
+        {
+          "name": "Apply for Job",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/students/jobs/{{jobDriveId}}/apply", "host": ["{{baseUrl}}"], "path": ["students", "jobs", "{{jobDriveId}}", "apply"] }
+          }
+        },
+        {
+          "name": "Get My Applications (saves first app id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.length > 0) {",
+                  "  pm.collectionVariables.set('applicationId', res.data[0].id);",
+                  "  console.log('App id saved: ' + res.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/students/applications", "host": ["{{baseUrl}}"], "path": ["students", "applications"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Admin - Applications",
+      "item": [
+        {
+          "name": "Get All Applications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/applications", "host": ["{{baseUrl}}"], "path": ["admin", "applications"] }
+          }
+        },
+        {
+          "name": "Update Status to SHORTLISTED",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SHORTLISTED\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/admin/applications/{{applicationId}}/status", "host": ["{{baseUrl}}"], "path": ["admin", "applications", "{{applicationId}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Admin - Interviews",
+      "item": [
+        {
+          "name": "Schedule Interview (saves id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.id) {",
+                  "  pm.collectionVariables.set('interviewId', res.data.id);",
+                  "  console.log('Interview id saved: ' + res.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"applicationId\": {{applicationId}},\n  \"interviewDate\": \"2026-12-15\",\n  \"interviewTime\": \"10:30:00\",\n  \"mode\": \"ONLINE\",\n  \"location\": \"https://zoom.us/j/12345\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/interviews", "host": ["{{baseUrl}}"], "path": ["interviews"] }
+          }
+        },
+        {
+          "name": "Cancel Interview",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/interviews/{{interviewId}}", "host": ["{{baseUrl}}"], "path": ["interviews", "{{interviewId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Error Tests",
+      "item": [
+        {
+          "name": "Invalid Email (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"A\",\n  \"email\": \"bad\",\n  \"password\": \"123\"\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "No Token - 401/403",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/admin/applications", "host": ["{{baseUrl}}"], "path": ["admin", "applications"] }
+          }
+        },
+        {
+          "name": "Student Token on Admin - 403",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/admin/applications", "host": ["{{baseUrl}}"], "path": ["admin", "applications"] }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Applications — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/admin/dashboard.html" class="navbar-brand">💼 Smart Placement (Admin)</a>
+    <div class="navbar-links">
+        <a href="/admin/dashboard.html">Dashboard</a>
+        <a href="/admin/companies.html">Companies</a>
+        <a href="/admin/jobs.html">Jobs</a>
+        <a href="/admin/applications.html" class="active">Applications</a>
+        <a href="/admin/interviews.html">Interviews</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Manage Applications 📄</h1>
+        <p>Review applications and update their status</p>
+    </div>
+
+    <!-- Status summary cards -->
+    <div class="stats-grid" style="margin-bottom:24px;">
+        <div class="stat-card info">
+            <h3>Total</h3>
+            <div class="value" id="countTotal">–</div>
+        </div>
+        <div class="stat-card">
+            <h3>Applied</h3>
+            <div class="value" id="countApplied">–</div>
+        </div>
+        <div class="stat-card warning">
+            <h3>Shortlisted</h3>
+            <div class="value" id="countShortlisted">–</div>
+        </div>
+        <div class="stat-card success">
+            <h3>Selected</h3>
+            <div class="value" id="countSelected">–</div>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="🔍 Search by student, company, or role...">
+        <select id="statusFilter">
+            <option value="">All Statuses</option>
+            <option value="APPLIED">Applied</option>
+            <option value="SHORTLISTED">Shortlisted</option>
+            <option value="INTERVIEW_SCHEDULED">Interview Scheduled</option>
+            <option value="SELECTED">Selected</option>
+            <option value="REJECTED">Rejected</option>
+        </select>
+        <select id="jobFilter">
+            <option value="">All Jobs</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadApplications()">🔄 Refresh</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <div id="applicationsContainer">
+            <div class="loading"><span class="spinner"></span>Loading applications...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══════════════ UPDATE STATUS MODAL ═══════════════ -->
+<div class="modal-overlay" id="statusModal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-header">
+            <h2>Update Application Status</h2>
+            <button class="modal-close" onclick="closeModal('statusModal')">&times;</button>
+        </div>
+
+        <div id="modalAlert" class="alert" style="display:none;"></div>
+
+        <div id="statusModalBody"></div>
+
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
+            <button class="btn btn-primary" id="updateBtn">💾 Update Status</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+    let allApplications = [];
+    let allJobs = [];
+    let currentApplicationId = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!guardAdminPage()) return;
+
+        await Promise.all([loadJobsForFilter(), loadApplications()]);
+
+        // Search & filters
+        document.getElementById('searchBox').addEventListener('input', applyFilters);
+        document.getElementById('statusFilter').addEventListener('change', applyFilters);
+        document.getElementById('jobFilter').addEventListener('change', applyFilters);
+
+        // Update button
+        document.getElementById('updateBtn').addEventListener('click', updateStatus);
+
+        // Overlay click to close
+        document.getElementById('statusModal').addEventListener('click', (e) => {
+            if (e.target.id === 'statusModal') closeModal('statusModal');
+        });
+    });
+
+    // ─────────────────────────────────────────────────
+    // LOAD JOBS for filter dropdown
+    // ─────────────────────────────────────────────────
+    async function loadJobsForFilter() {
+        try {
+            const res = await api.get('/jobs');
+            allJobs = res.data || [];
+
+            const dropdown = document.getElementById('jobFilter');
+            dropdown.innerHTML = '<option value="">All Jobs</option>' +
+                allJobs.map(j => `<option value="${j.id}">${escapeHtml(j.companyName)} — ${escapeHtml(j.jobRole)}</option>`).join('');
+        } catch (e) {
+            console.error('Could not load jobs for filter:', e);
+        }
+    }
+
+    // ─────────────────────────────────────────────────
+    // LOAD APPLICATIONS
+    // ─────────────────────────────────────────────────
+    async function loadApplications() {
+        const container = document.getElementById('applicationsContainer');
+        container.innerHTML = '<div class="loading"><span class="spinner"></span>Loading applications...</div>';
+
+        try {
+            const res = await api.get('/admin/applications');
+            allApplications = res.data || [];
+            updateCounts(allApplications);
+            renderApplications(allApplications);
+        } catch (error) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Could not load applications</h3>
+                    <p>${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    function updateCounts(apps) {
+        setText('countTotal', apps.length);
+        setText('countApplied', apps.filter(a => a.status === 'APPLIED').length);
+        setText('countShortlisted', apps.filter(a => a.status === 'SHORTLISTED').length);
+        setText('countSelected', apps.filter(a => a.status === 'SELECTED').length);
+    }
+
+    // ─────────────────────────────────────────────────
+    // RENDER TABLE
+    // ─────────────────────────────────────────────────
+    function renderApplications(apps) {
+        const container = document.getElementById('applicationsContainer');
+
+        if (!apps.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No applications found</h3>
+                    <p>Try adjusting your filters</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Student</th>
+                            <th>Company</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Applied</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${apps.map((a, i) => `
+                            <tr>
+                                <td>${i + 1}</td>
+                                <td><strong>${escapeHtml(a.studentName)}</strong></td>
+                                <td>${escapeHtml(a.companyName)}</td>
+                                <td>${escapeHtml(a.jobRole)}</td>
+                                <td><span class="badge ${statusColor(a.status)}">${a.status.replace('_', ' ')}</span></td>
+                                <td>${formatDate(a.appliedDate)}</td>
+                                <td>
+                                    <div class="table-actions">
+                                        <button class="btn btn-sm btn-primary" onclick="openStatusModal(${a.id})">✏️ Update Status</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // ─────────────────────────────────────────────────
+    // FILTERS
+    // ─────────────────────────────────────────────────
+    function applyFilters() {
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        const status = document.getElementById('statusFilter').value;
+        const jobId = document.getElementById('jobFilter').value;
+
+        let filtered = allApplications.filter(a => {
+            const matchesSearch = !q ||
+                a.studentName.toLowerCase().includes(q) ||
+                a.companyName.toLowerCase().includes(q) ||
+                a.jobRole.toLowerCase().includes(q);
+
+            const matchesStatus = !status || a.status === status;
+            const matchesJob = !jobId || String(a.jobDriveId) === String(jobId);
+
+            return matchesSearch && matchesStatus && matchesJob;
+        });
+
+        renderApplications(filtered);
+    }
+
+    // ─────────────────────────────────────────────────
+    // UPDATE STATUS MODAL
+    // ─────────────────────────────────────────────────
+    function openStatusModal(id) {
+        const app = allApplications.find(a => a.id === id);
+        if (!app) return;
+
+        currentApplicationId = id;
+
+        const statusOptions = [
+            { value: 'APPLIED',             label: 'Applied',             desc: 'Initial state' },
+            { value: 'SHORTLISTED',         label: 'Shortlisted',         desc: 'Student passed initial screening' },
+            { value: 'INTERVIEW_SCHEDULED', label: 'Interview Scheduled', desc: 'Interview has been scheduled' },
+            { value: 'SELECTED',            label: 'Selected',            desc: 'Student got the offer 🎉' },
+            { value: 'REJECTED',            label: 'Rejected',            desc: 'Not selected for this role' }
+        ];
+
+        document.getElementById('statusModalBody').innerHTML = `
+            <div style="background:#f8fafc;padding:14px;border-radius:8px;margin-bottom:18px;">
+                <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:4px;">Application</div>
+                <div style="font-size:16px;font-weight:700;color:#0f172a;">${escapeHtml(app.studentName)}</div>
+                <div style="font-size:13px;color:#64748b;margin-top:2px;">${escapeHtml(app.jobRole)} @ ${escapeHtml(app.companyName)}</div>
+            </div>
+
+            <div class="form-group">
+                <label for="newStatus">New Status</label>
+                <select id="newStatus">
+                    ${statusOptions.map(s => `
+                        <option value="${s.value}" ${s.value === app.status ? 'selected' : ''}>
+                            ${s.label} — ${s.desc}
+                        </option>
+                    `).join('')}
+                </select>
+            </div>
+        `;
+
+        document.getElementById('modalAlert').style.display = 'none';
+        openModal('statusModal');
+    }
+
+    async function updateStatus() {
+        if (!currentApplicationId) return;
+
+        const btn = document.getElementById('updateBtn');
+        const alertBox = document.getElementById('modalAlert');
+        const newStatus = document.getElementById('newStatus').value;
+
+        btn.disabled = true;
+        btn.textContent = 'Updating...';
+        alertBox.style.display = 'none';
+
+        try {
+            await api.put(`/admin/applications/${currentApplicationId}/status`, {
+                status: newStatus
+            });
+
+            showMessage('Application status updated!', 'success');
+            closeModal('statusModal');
+            currentApplicationId = null;
+
+            await loadApplications();
+        } catch (error) {
+            alertBox.className = 'alert alert-error';
+            alertBox.textContent = 'Update failed: ' + error.message;
+            alertBox.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Update Status';
+        }
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Jobs — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/student/dashboard.html" class="navbar-brand">💼 Smart Placement</a>
+    <div class="navbar-links">
+        <a href="/student/dashboard.html">Dashboard</a>
+        <a href="/student/jobs.html" class="active">Jobs</a>
+        <a href="/student/applications.html">My Applications</a>
+        <a href="/student/profile.html">Profile</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Browse Jobs 🎯</h1>
+        <p>Jobs you are eligible for based on your CGPA</p>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="🔍 Search by company or role...">
+        <select id="locationFilter">
+            <option value="">All Locations</option>
+        </select>
+        <select id="sortFilter">
+            <option value="deadline">Sort by Deadline</option>
+            <option value="package">Sort by Package (High to Low)</option>
+            <option value="company">Sort by Company</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadJobs()">🔄 Refresh</button>
+    </div>
+
+    <!-- Jobs Container -->
+    <div id="jobsContainer">
+        <div class="loading"><span class="spinner"></span>Loading jobs...</div>
+    </div>
+
+</div>
+
+<!-- ═══════════════ JOB DETAILS MODAL ═══════════════ -->
+<div class="modal-overlay" id="jobModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 id="modalJobTitle">Job Details</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div id="modalJobBody"></div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+            <button class="btn btn-primary" id="modalApplyBtn">Apply Now</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/student.js"></script>
+<script>
+    // Jobs page initializer
+    let allJobs = [];
+    let appliedJobIds = new Set();
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!guardStudentPage()) return;
+        await Promise.all([loadAppliedJobs(), loadJobs()]);
+        setupFilters();
+    });
+
+    async function loadAppliedJobs() {
+        try {
+            const res = await api.get('/students/applications');
+            appliedJobIds = new Set((res.data || []).map(a => a.jobDriveId));
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    async function loadJobs() {
+        const container = document.getElementById('jobsContainer');
+        container.innerHTML = '<div class="loading"><span class="spinner"></span>Loading jobs...</div>';
+
+        try {
+            const res = await api.get('/students/jobs/eligible');
+            allJobs = res.data || [];
+
+            // Populate location filter
+            const locations = [...new Set(allJobs.map(j => j.location))].sort();
+            const locSelect = document.getElementById('locationFilter');
+            locSelect.innerHTML = '<option value="">All Locations</option>' +
+                locations.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+
+            renderJobs(allJobs);
+        } catch (error) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Could not load jobs</h3>
+                    <p>${escapeHtml(error.message)}</p>
+                    <p style="margin-top:12px;">Make sure your profile is complete.</p>
+                    <a href="/student/profile.html" class="btn btn-primary" style="margin-top:12px;">Complete Profile</a>
+                </div>
+            `;
+        }
+    }
+
+    function renderJobs(jobs) {
+        const container = document.getElementById('jobsContainer');
+
+        if (!jobs.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No eligible jobs right now</h3>
+                    <p>Check back later for new opportunities</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="job-grid">
+                ${jobs.map(j => renderJobCard(j)).join('')}
+            </div>
+        `;
+    }
+
+    function renderJobCard(j) {
+        const applied = appliedJobIds.has(j.id);
+        const deadlinePassed = new Date(j.deadline) < new Date();
+
+        let button;
+        if (applied) {
+            button = `<button class="btn btn-secondary btn-sm" disabled>✓ Already Applied</button>`;
+        } else if (deadlinePassed) {
+            button = `<button class="btn btn-danger btn-sm" disabled>Deadline Passed</button>`;
+        } else {
+            button = `<button class="btn btn-primary btn-sm" onclick="applyForJob(${j.id})">Apply Now</button>`;
+        }
+
+        return `
+            <div class="job-card">
+                <div class="job-card-header">
+                    <div class="job-company">${escapeHtml(j.companyName)}</div>
+                    <div class="job-package">${formatPackage(j.packageAmount)}</div>
+                </div>
+                <div class="job-role">${escapeHtml(j.jobRole)}</div>
+                <div class="job-meta">
+                    <span>📍 ${escapeHtml(j.location)}</span>
+                    <span>🎓 CGPA ≥ ${j.requiredCgpa}</span>
+                </div>
+                ${j.requiredSkills ? `
+                    <div style="font-size:12px;color:#64748b;">
+                        <strong>Skills:</strong> ${escapeHtml(j.requiredSkills)}
+                    </div>
+                ` : ''}
+                <div class="job-deadline">
+                    Deadline: <strong>${formatDate(j.deadline)}</strong>
+                    ${j.applicationCount ? `<span style="float:right;">${j.applicationCount} applicants</span>` : ''}
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="viewJobDetails(${j.id})">Details</button>
+                    ${button.replace('class="btn', 'style="flex:1;" class="btn')}
+                </div>
+            </div>
+        `;
+    }
+
+    function viewJobDetails(jobId) {
+        const j = allJobs.find(x => x.id === jobId);
+        if (!j) return;
+
+        document.getElementById('modalJobTitle').textContent = j.jobRole;
+        document.getElementById('modalJobBody').innerHTML = `
+            <div class="profile-grid">
+                <div class="profile-item">
+                    <div class="profile-label">Company</div>
+                    <div class="profile-value">${escapeHtml(j.companyName)}</div>
+                </div>
+                <div class="profile-item">
+                    <div class="profile-label">Package</div>
+                    <div class="profile-value">${formatPackage(j.packageAmount)}</div>
+                </div>
+                <div class="profile-item">
+                    <div class="profile-label">Location</div>
+                    <div class="profile-value">${escapeHtml(j.location)}</div>
+                </div>
+                <div class="profile-item">
+                    <div class="profile-label">Required CGPA</div>
+                    <div class="profile-value">${j.requiredCgpa}</div>
+                </div>
+                <div class="profile-item">
+                    <div class="profile-label">Deadline</div>
+                    <div class="profile-value">${formatDate(j.deadline)}</div>
+                </div>
+                <div class="profile-item">
+                    <div class="profile-label">Applicants</div>
+                    <div class="profile-value">${j.applicationCount || 0}</div>
+                </div>
+            </div>
+            ${j.requiredSkills ? `
+                <div style="margin-top:20px;">
+                    <div class="profile-label">Required Skills</div>
+                    <div class="profile-value">${escapeHtml(j.requiredSkills)}</div>
+                </div>
+            ` : ''}
+        `;
+
+        const applyBtn = document.getElementById('modalApplyBtn');
+        if (appliedJobIds.has(j.id)) {
+            applyBtn.disabled = true;
+            applyBtn.textContent = '✓ Already Applied';
+            applyBtn.className = 'btn btn-secondary';
+        } else if (new Date(j.deadline) < new Date()) {
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Deadline Passed';
+            applyBtn.className = 'btn btn-danger';
+        } else {
+            applyBtn.disabled = false;
+            applyBtn.textContent = 'Apply Now';
+            applyBtn.className = 'btn btn-primary';
+            applyBtn.onclick = () => applyForJob(j.id);
+        }
+
+        document.getElementById('jobModal').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('jobModal').classList.remove('active');
+    }
+
+    async function applyForJob(jobId) {
+        if (!confirm('Apply for this job? This cannot be undone.')) return;
+
+        try {
+            await api.post(`/students/jobs/${jobId}/apply`);
+            showMessage('Application submitted successfully!', 'success');
+            closeModal();
+
+            // Reload
+            await loadAppliedJobs();
+            await loadJobs();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    }
+
+    function setupFilters() {
+        const search = document.getElementById('searchBox');
+        const loc = document.getElementById('locationFilter');
+        const sort = document.getElementById('sortFilter');
+
+        search.addEventListener('input', applyFilters);
+        loc.addEventListener('change', applyFilters);
+        sort.addEventListener('change', applyFilters);
+
+        // Close modal on overlay click
+        document.getElementById('jobModal').addEventListener('click', (e) => {
+            if (e.target.id === 'jobModal') closeModal();
+        });
+    }
+
+    function applyFilters() {
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        const location = document.getElementById('locationFilter').value;
+        const sortBy = document.getElementById('sortFilter').value;
+
+        let filtered = allJobs.filter(j => {
+            const matchesSearch = !q ||
+                j.companyName.toLowerCase().includes(q) ||
+                j.jobRole.toLowerCase().includes(q);
+            const matchesLocation = !location || j.location === location;
+            return matchesSearch && matchesLocation;
+        });
+
+        if (sortBy === 'deadline') {
+            filtered.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+        } else if (sortBy === 'package') {
+            filtered.sort((a, b) => b.packageAmount - a.packageAmount);
+        } else if (sortBy === 'company') {
+            filtered.sort((a, b) => a.companyName.localeCompare(b.companyName));
+        }
+
+        renderJobs(filtered);
+    }
+</script>
+</body>
+</html>

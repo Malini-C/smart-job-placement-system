@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — Smart Job Placement</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+<!-- ═══════════════ NAVBAR ═══════════════ -->
+<nav class="navbar">
+    <a href="/admin/dashboard.html" class="navbar-brand">💼 Smart Placement (Admin)</a>
+    <div class="navbar-links">
+        <a href="/admin/dashboard.html" class="active">Dashboard</a>
+        <a href="/admin/companies.html">Companies</a>
+        <a href="/admin/jobs.html">Jobs</a>
+        <a href="/admin/applications.html">Applications</a>
+        <a href="/admin/interviews.html">Interviews</a>
+        <div class="user-info">
+            <span id="userName">Loading...</span>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<div class="container">
+
+    <div class="page-header">
+        <h1>Welcome, <span id="welcomeName">Admin</span>! 👋</h1>
+        <p>Manage companies, job drives, and student applications</p>
+    </div>
+
+    <!-- ═══════════════ STAT CARDS ═══════════════ -->
+    <div class="stats-grid">
+        <div class="stat-card info">
+            <h3>Total Companies</h3>
+            <div class="value" id="statCompanies">–</div>
+        </div>
+        <div class="stat-card warning">
+            <h3>Active Job Drives</h3>
+            <div class="value" id="statJobs">–</div>
+        </div>
+        <div class="stat-card success">
+            <h3>Total Applications</h3>
+            <div class="value" id="statApplications">–</div>
+        </div>
+        <div class="stat-card">
+            <h3>Shortlisted</h3>
+            <div class="value" id="statShortlisted">–</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ QUICK ACTIONS ═══════════════ -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">⚡ Quick Actions</div>
+        </div>
+        <div class="quick-actions">
+            <a href="/admin/companies.html" class="quick-action">
+                <div class="quick-action-icon">🏢</div>
+                <div class="quick-action-label">Manage Companies</div>
+            </a>
+            <a href="/admin/jobs.html" class="quick-action">
+                <div class="quick-action-icon">💼</div>
+                <div class="quick-action-label">Create Job Drive</div>
+            </a>
+            <a href="/admin/applications.html" class="quick-action">
+                <div class="quick-action-icon">📄</div>
+                <div class="quick-action-label">Review Applications</div>
+            </a>
+            <a href="/admin/interviews.html" class="quick-action">
+                <div class="quick-action-icon">📅</div>
+                <div class="quick-action-label">Schedule Interviews</div>
+            </a>
+        </div>
+    </div>
+
+    <!-- ═══════════════ RECENT APPLICATIONS ═══════════════ -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📄 Recent Applications</div>
+            <a href="/admin/applications.html" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+        <div id="recentApplications">
+            <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ RECENT JOBS ═══════════════ -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">💼 Active Job Drives</div>
+            <a href="/admin/jobs.html" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+        <div id="recentJobs">
+            <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+    </div>
+
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', initAdminDashboard);
+</script>
+</body>
+</html>
