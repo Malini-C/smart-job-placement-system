@@ -2,7 +2,7 @@
 // API HELPER — Central place for all backend calls
 // ═══════════════════════════════════════════════════════════════
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = '/api';
 
 // ─────────────────────────────────────────────────────────────
 // Get JWT token from localStorage
